@@ -1,8 +1,10 @@
+from fastapi import UploadFile
 from pydantic import BaseModel, Field
 from typing import List
-
-from models import ComentarioModel
+from utils.DecoratorUtil import DecoratorUtil
 from models.UsuarioModel import UsuarioModel
+
+decoratorUtil = DecoratorUtil()
 
 
 class PostagemModel(BaseModel):
@@ -12,7 +14,7 @@ class PostagemModel(BaseModel):
     legenda: str = Field(...)
     data: str = Field(...)
     curtidas: int = Field(...)
-    comentarios: List[ComentarioModel] = Field(...)
+    comentarios: List = Field(...)
 
     class Config:
         schema_extra = {
@@ -27,15 +29,14 @@ class PostagemModel(BaseModel):
         }
 
 
+@decoratorUtil.form_body
 class PostagemCriarModel(BaseModel):
-    usuario: UsuarioModel = Field(...)
-    foto: str = Field(...)
+    foto: UploadFile = Field(...)
     legenda: str = Field(...)
 
     class Config:
         schema_extra = {
             "postagem": {
-                "usuario": "UsuarioModel",
                 "foto": "string",
                 "legenda": "string",
             }

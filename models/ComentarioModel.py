@@ -1,10 +1,11 @@
 from pydantic import BaseModel, Field
 
-from models import UsuarioModel
-
 
 class ComentarioModel(BaseModel):
-    usuario: UsuarioModel = Field(...)
+    usuario_id: str = Field(...)
     comentario: str = Field(...)
 
+
+class ComentarioCriarModel(BaseModel):
+    comentario: str = Field(...)
     
