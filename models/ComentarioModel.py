@@ -8,4 +8,6 @@ class ComentarioModel(BaseModel):
 
 class ComentarioCriarModel(BaseModel):
     comentario: str = Field(...)
-    
+
+class ComentarioAtualizarModel(BaseModel):
+    comentario: str = Field(...)

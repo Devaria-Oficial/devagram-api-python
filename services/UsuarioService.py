@@ -1,12 +1,18 @@
 import os
 from datetime import datetime
 
+from bson import ObjectId
+
+from dtos.ResponseDTO import ResponseDTO
 from models.UsuarioModel import UsuarioCriarModel, UsuarioAtualizarModel
 from providers.AWSProvider import AWSProvider
 from repositories.UsuarioRepository import UsuarioRepository
+from repositories.PostagemRepository import PostagemRepository
 
 awsProvider = AWSProvider()
+
 usuarioRepository = UsuarioRepository()
+postagemRepository = PostagemRepository()
 
 
 class UsuarioService:
@@ -16,61 +22,62 @@ class UsuarioService:
             usuario_encontrado = await usuarioRepository.buscar_usuario_por_email(usuario.email)
 
             if usuario_encontrado:
-                return {
-                    "mensagem": f'E-mail {usuario.email} já cadastrado no sistema.',
-                    "dados": "",
-                    "status": 400
-                }
+                return ResponseDTO(f'E-mail {usuario.email} já cadastrado no sistema.', "", 400)
             else:
                 novo_usuario = await usuarioRepository.criar_usuario(usuario)
 
                 try:
                     url_foto = awsProvider.upload_arquivo_s3(
-                        f'fotos-perfil/{novo_usuario["id"]}.png',
+                        f'fotos-perfil/{novo_usuario.id}.png',
                         caminho_foto
                     )
 
-                    novo_usuario = await usuarioRepository.atualizar_usuario(novo_usuario["id"], {"foto": url_foto})
+                    novo_usuario = await usuarioRepository.atualizar_usuario(novo_usuario.id, {"foto": url_foto})
                 except Exception as erro:
                     print(erro)
 
+                return ResponseDTO("Usuário cadastrado com sucesso!", novo_usuario, 201)
 
-                return {
-                    "mensagem": "Usuário cadastrado com sucesso!",
-                    "dados": novo_usuario,
-                    "status": 201
-                }
-        except Exception as error:
-            return {
-                "mensagem": "Erro interno no servidor",
-                "dados": str(error),
-                "status": 500
-            }
+        except Exception as erro:
+            print(erro)
 
-    async def buscar_usuario_logado(self, id: str):
+            return ResponseDTO("Erro interno no servidor", str(erro), 500)
+
+    async def buscar_usuario(self, id: str):
         try:
             usuario_encontrado = await usuarioRepository.buscar_usuario(id)
 
             if usuario_encontrado:
-                return {
-                    "mensagem": f"Usuário encontrado.",
-                    "dados": usuario_encontrado,
-                    "status": 200
-                }
+                postagens_encontradas = await postagemRepository.listar_postagens_usuario(id)
+
+                usuario_encontrado.total_seguidores = len(usuario_encontrado.seguidores)
+                usuario_encontrado.total_seguindo = len(usuario_encontrado.seguindo)
+                usuario_encontrado.postagens = postagens_encontradas
+                usuario_encontrado.total_postagem = len(postagens_encontradas)
+
+                return ResponseDTO("Usuário encontrado.", usuario_encontrado, 200)
             else:
-                return {
-                    "mensagem": f"Usuário com o id {id} não foi encontrado.",
-                    "dados": "",
-                    "status": 404
-                }
+                return ResponseDTO(f"Usuário com o id {id} não foi encontrado.", "", 404)
 
         except Exception as erro:
             print(erro)
-            return {
-                "mensagem": "Erro interno no servidor",
-                "dados": str(erro),
-                "status": 500
-            }
+
+            return ResponseDTO("Erro interno no servidor", str(erro), 500)
+
+    async def listar_usuarios(self, nome):
+        try:
+            usuarios_encontrado = await usuarioRepository.listar_usuarios(nome)
+
+            for usuario in usuarios_encontrado:
+                usuario.total_seguindo = len(usuario.seguindo)
+                usuario.total_seguidores = len(usuario.seguidores)
+
+            return ResponseDTO("Usuários listados com sucesso!", usuarios_encontrado, 200)
+
+        except Exception as erro:
+            print(erro)
+
+            return ResponseDTO("Erro interno no servidor", str(erro), 500)
 
     async def atualizar_usuario_logado(self, id, usuario_atualizar: UsuarioAtualizarModel):
         try:
@@ -98,22 +105,44 @@ class UsuarioService:
 
                 usuario_atualizado = await usuarioRepository.atualizar_usuario(id, usuario_dict)
 
-                return {
-                    "mensagem": f"Usuário atualizado.",
-                    "dados": usuario_atualizado,
-                    "status": 200
-                }
+                return ResponseDTO("Usuário atualizado.", usuario_atualizado, 200)
             else:
-                return {
-                    "mensagem": f"Usuário com o id {id} não foi encontrado.",
-                    "dados": "",
-                    "status": 404
-                }
+                return ResponseDTO(f"Usuário com o id {id} não foi encontrado.", "", 404)
 
         except Exception as erro:
             print(erro)
-            return {
-                "mensagem": "Erro interno no servidor",
-                "dados": str(erro),
-                "status": 500
-            }
+
+            return ResponseDTO("Erro interno no servidor", str(erro), 500)
+
+    async def follow_unfollow_usuario(self, usuario_logado_id, usuario_seguido_id):
+        try:
+            usuario_logado_encontrado = await usuarioRepository.buscar_usuario(usuario_logado_id)
+            usuario_seguido_encontrado = await usuarioRepository.buscar_usuario(usuario_seguido_id)
+
+            if usuario_seguido_encontrado.seguidores.count(usuario_logado_id) > 0:
+                usuario_seguido_encontrado.seguidores.remove(usuario_logado_id)
+                usuario_logado_encontrado.seguindo.remove(usuario_seguido_id)
+            else:
+                usuario_seguido_encontrado.seguidores.append(ObjectId(usuario_logado_id))
+                usuario_logado_encontrado.seguindo.append(ObjectId(usuario_seguido_id))
+
+            await usuarioRepository.atualizar_usuario(
+                usuario_seguido_encontrado.id,
+                {
+                    "seguidores": usuario_seguido_encontrado.seguidores
+                }
+            )
+
+            await usuarioRepository.atualizar_usuario(
+                usuario_logado_encontrado.id,
+                {
+                    "seguindo": usuario_logado_encontrado.seguindo
+                }
+            )
+
+            return ResponseDTO("Requisição realizada com sucesso.", "", 200)
+
+        except Exception as erro:
+            print(erro)
+
+            return ResponseDTO("Erro interno no servidor", str(erro), 500)
